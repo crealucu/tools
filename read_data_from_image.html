@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graph Extractor Pro</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.js" id="opencv-js"></script>
+  <style>
+    /* Custom scrollbar adjustments for sleek tracking aesthetics */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col antialiased selection:bg-blue-500/30">
+
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between shadow-lg shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">📊</span>
+      <div>
+        <h1 class="text-lg font-bold tracking-tight text-white">Graph Extractor Pro</h1>
+        <p class="text-xs text-slate-400">Convert plot image pixels directly to raw scientific datasets</p>
+      </div>
+    </div>
+    <div id="cv-status" class="text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+      Initializing OpenCV.js Core Engine...
+    </div>
+  </header>
+
+  <div class="flex flex-1 overflow-hidden">
+
+    <aside class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col overflow-y-auto p-4 space-y-4 shrink-0">
+      
+      <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800 space-y-3">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+          <span>📁</span> 1. Load Image Asset
+        </h3>
+        <label class="group block border-2 border-dashed border-slate-700 hover:border-blue-500/80 bg-slate-950 p-4 text-center rounded-lg cursor-pointer transition-all duration-200">
+          <input class="hidden" type="file" id="fileInput">
+          <span class="text-xs font-medium text-slate-300 block group-hover:text-blue-400 transition-colors">Select Chart File</span>
+          <span class="text-[10px] text-slate-500 block mt-1">or click and paste via Clipboard (Ctrl+V)</span>
+        </label>
+      </div>
+
+      <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800 space-y-3">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+          <span>🎯</span> 2. Axis Target Calibration
+        </h3>
+        <div class="grid grid-cols-1 gap-2">
+          <button id="btn-p1" onclick="setMode('p1')" class="w-full text-left bg-slate-800 hover:bg-blue-600 active:scale-[0.98] text-xs font-semibold py-2 px-3 rounded-lg text-slate-200 hover:text-white border border-slate-700 hover:border-blue-500 transition-all cursor-pointer">
+            📍 Pick Target Pt 1 (x_min, y_max)
+          </button>
+          <button id="btn-p2" onclick="setMode('p2')" class="w-full text-left bg-slate-800 hover:bg-blue-600 active:scale-[0.98] text-xs font-semibold py-2 px-3 rounded-lg text-slate-200 hover:text-white border border-slate-700 hover:border-blue-500 transition-all cursor-pointer">
+            📍 Pick Target Pt 2 (x_max, y_min)
+          </button>
+          <button onclick="resetPoints()" class="w-full text-center bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-xs font-medium py-2 px-3 rounded-lg text-slate-400 hover:text-slate-200 border border-slate-800 transition-all cursor-pointer">
+            Clear Point Selection Vectors
+          </button>
+        </div>
+        <p id="coordsDisplay" class="text-[11px] font-mono text-slate-400 text-center bg-slate-950/60 p-1 rounded border border-slate-800/80 hidden"></p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-slate-950/40 p-3 rounded-xl border border-slate-800 space-y-2">
+          <h3 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+            <span>⚙️</span> Pixel Box
+          </h3>
+          <div class="space-y-1.5">
+            <label class="block text-[10px] text-slate-500 font-mono">Xmin <input id="pxmin" type="number" readonly class="w-full bg-slate-950 border border-slate-800 text-slate-400 text-xs px-2 py-1 rounded focus:outline-none cursor-not-allowed mt-0.5"></label>
+            <label class="block text-[10px] text-slate-500 font-mono">Xmax <input id="pxmax" type="number" readonly class="w-full bg-slate-950 border border-slate-800 text-slate-400 text-xs px-2 py-1 rounded focus:outline-none cursor-not-allowed mt-0.5"></label>
+            <label class="block text-[10px] text-slate-500 font-mono">Ymin <input id="pymin" type="number" readonly class="w-full bg-slate-950 border border-slate-800 text-slate-400 text-xs px-2 py-1 rounded focus:outline-none cursor-not-allowed mt-0.5"></label>
+            <label class="block text-[10px] text-slate-500 font-mono">Ymax <input id="pymax" type="number" readonly class="w-full bg-slate-950 border border-slate-800 text-slate-400 text-xs px-2 py-1 rounded focus:outline-none cursor-not-allowed mt-0.5"></label>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/40 p-3 rounded-xl border border-slate-800 space-y-2">
+          <h3 class="text-[10px] font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
+            <span>📈</span> Scale Box
+          </h3>
+          <div class="space-y-1.5">
+            <label class="block text-[10px] text-slate-400 font-mono">Xmin <input id="xmin" type="number" value="0" class="w-full bg-slate-950 border border-slate-700 text-white font-medium text-xs px-2 py-1 rounded focus:outline-none focus:border-blue-500 mt-0.5"></label>
+            <label class="block text-[10px] text-slate-400 font-mono">Xmax <input id="xmax" type="number" value="10" class="w-full bg-slate-950 border border-slate-700 text-white font-medium text-xs px-2 py-1 rounded focus:outline-none focus:border-blue-500 mt-0.5"></label>
+            <label class="block text-[10px] text-slate-400 font-mono">Ymin <input id="ymin" type="number" value="0" class="w-full bg-slate-950 border border-slate-700 text-white font-medium text-xs px-2 py-1 rounded focus:outline-none focus:border-blue-500 mt-0.5"></label>
+            <label class="block text-[10px] text-slate-400 font-mono">Ymax <input id="ymax" type="number" value="100" class="w-full bg-slate-950 border border-slate-700 text-white font-medium text-xs px-2 py-1 rounded focus:outline-none focus:border-blue-500 mt-0.5"></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-950/40 p-4 rounded-xl border border-slate-800 space-y-2">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+          <span>⚡</span> 3. Dataset Render
+        </h3>
+        <button onclick="drawFinalGraph()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white active:scale-[0.98] text-xs font-bold py-2.5 px-4 rounded-lg shadow-md transition-all duration-150 cursor-pointer">
+          Transform & Plot Curve
+        </button>
+        <button onclick="downloadCSV()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 active:scale-[0.98] text-xs font-semibold py-2 px-4 rounded-lg border border-slate-700 transition-all duration-150 cursor-pointer">
+          Export Structured CSV Data
+        </button>
+      </div>
+
+      <div class="bg-slate-950/20 p-3 rounded-xl border border-slate-800/60 mt-auto">
+        <h4 class="text-[11px] font-bold tracking-wider text-slate-500 uppercase mb-1.5">Interactive Modifiers</h4>
+        <ul class="text-[11px] text-slate-400 space-y-1 font-medium">
+          <li class="flex items-start gap-1.5"><span class="text-blue-400">🖱️ Drag</span><span>Isolate target plotting region</span></li>
+          <li class="flex items-start gap-1.5"><span class="text-red-400">⌨️ Shift + Drag</span><span>Erase noise from pixel field</span></li>
+          <li class="flex items-start gap-1.5"><span class="text-amber-400">🎯 Arrow Keys</span><span>Nudge selected point (Shift = 10px)</span></li>
+        </ul>
+      </div>
+
+    </aside>
+
+    <main class="flex-1 bg-slate-950 p-6 overflow-auto flex flex-col space-y-6">
+      
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 flex-1 min-h-[500px]">
+        
+        <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 flex flex-col shadow-inner">
+          <div class="flex items-center justify-between mb-3 shrink-0">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-blue-500"></span> Input Workspace Area
+            </span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-slate-400 font-mono border border-slate-800">Source Asset</span>
+          </div>
+          <div class="flex-1 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-center p-4 overflow-auto min-h-[360px] relative">
+            <canvas id="canvas" class="max-w-full h-auto shadow-2xl rounded-lg cursor-crosshair bg-slate-900/50" tabIndex="1"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 flex flex-col shadow-inner">
+          <div class="flex items-center justify-between mb-3 shrink-0">
+            <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Mathematical Matrix Data Plot
+            </span>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-emerald-400 font-mono border border-slate-800">Calculated State</span>
+          </div>
+          <div class="flex-1 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-center p-4 overflow-auto min-h-[360px]">
+            <canvas id="plotCanvas" width="500" height="400" class="max-w-full h-auto shadow-2xl rounded-lg bg-slate-900/20"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <script>
+    let rawPoints = [];
+    let filteredPoints = [];
+
+    let canvas = document.getElementById("canvas");
+    let ctx = canvas.getContext("2d");
+
+    let dragging = false;
+    let startX, startY, endX, endY;
+
+    // Calibration points
+    let mode = null;
+    let activePointMode = null; // Keeps track of which point is selected for arrow adjustments
+    const point_size = 1;
+    let p1 = null;
+    let p2 = null;
+
+    let showMagnifier = false;
+    let mouseX = 0;
+    let mouseY = 0;
+
+    const zoomFactor = 4;     // magnification level
+    const lensSize = 120;     // diameter of magnifier
+
+    // Verification listener monitoring asynchronous loading initialization of local OpenCV assembly targets
+    var openCvScript = document.getElementById('opencv-js');
+    openCvScript.addEventListener('load', function() {
+      const displayStatus = document.getElementById('cv-status');
+      displayStatus.innerText = "OpenCV.js Engine Active";
+      displayStatus.className = "text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full flex items-center gap-2";
+    });
+
+    // Load image
+    document.getElementById("fileInput").addEventListener("change", e=>{
+      if(e.target.files.length === 0) return;
+      let img = new Image();
+      img.onload = ()=>processImage(img);
+      img.src = URL.createObjectURL(e.target.files[0]);
+    });
+
+    // Clipboard
+    document.addEventListener("paste", e=>{
+      for (let item of e.clipboardData.items) {
+        if (item.type.includes("image")) {
+          let img = new Image();
+          img.onload = ()=>processImage(img);
+          img.src = URL.createObjectURL(item.getAsFile());
+        }
+      }
+    });
+
+    function processImage(img) {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      let src = cv.imread(canvas);
+      let gray = new cv.Mat();
+      let edges = new cv.Mat();
+
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.Canny(gray, edges, 50, 150);
+
+      //filteredPoints = get_list_of_centroids_of_pixel_segments(edges);
+      rawPoints = [];
+
+      for (let y=0; y<edges.rows; y++) {
+        for (let x=0; x<edges.cols; x++) {
+          if (edges.ucharPtr(y,x)[0] > 0) {
+            rawPoints.push({x,y});
+          }
+        }
+      }
+
+      filteredPoints = [...rawPoints];
+      draw();
+      canvas.style.width = canvas.width + "px";
+      canvas.style.height = canvas.height + "px";
+
+      src.delete(); gray.delete(); edges.delete();
+    }
+
+    function draw() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // Draw extracted points
+      ctx.fillStyle = "#ef4444"; // Modern bright red tint for target tracking visualization
+      filteredPoints.forEach(p => {
+        ctx.fillRect(p.x, p.y, 1, 1);
+      });
+
+      // Draw calibration points
+      if (p1) {
+        ctx.fillStyle = activePointMode === 'p1' ? "#f59e0b" : "#3b82f6"; // Amber if active, Blue otherwise
+        ctx.beginPath();
+        ctx.arc(p1.x, p1.y, point_size, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      if (p2) {
+        ctx.fillStyle = activePointMode === 'p2' ? "#f59e0b" : "#3b82f6"; // Amber if active, Blue otherwise
+        ctx.beginPath();
+        ctx.arc(p2.x, p2.y, point_size, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // Magnifier (if active)
+      if (showMagnifier) {
+        drawMagnifier(mouseX, mouseY);
+      }
+    }
+
+    canvas.addEventListener("mousedown", e=>{
+      if (mode) return;
+
+      const pos = getMousePos(canvas, e);
+
+      dragging = true;
+      startX = pos.x;
+      startY = pos.y;
+    });
+
+    canvas.addEventListener("mousemove", e => {
+      const pos = getMousePos(canvas, e);
+
+      mouseX = pos.x;
+      mouseY = pos.y;
+
+      if (!dragging && !mode) return;
+
+      if (dragging) {
+        endX = pos.x;
+        endY = pos.y;
+
+        draw();
+        ctx.strokeStyle = "#3b82f6";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]); // Clean tracking dashboard style line border
+        ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+        ctx.setLineDash([]); // Reset system line state array mappings dynamically
+      } else {
+        draw(); // redraw for magnifier
+      }
+    });
+
+    canvas.addEventListener("mouseup", e=>{
+      if (mode) return;
+
+      const pos = getMousePos(canvas, e);
+
+      dragging = false;
+      endX = pos.x;
+      endY = pos.y;
+
+      applySelection(e.shiftKey);
+    });
+
+    canvas.addEventListener("click", e => {
+      if (!mode) return;
+
+      const pos = getMousePos(canvas, e);
+
+      let point = { x: pos.x, y: pos.y };
+
+      if (mode === 'p1') p1 = point;
+      else if (mode === 'p2') p2 = point;
+
+      mode = null;
+      showMagnifier = false;
+
+      // Ensure our active tracking borders highlight correctly
+      updateButtonStyles();
+      updateDisplay();
+      draw();
+    });
+
+    // Handle Keyboard Nudging via Arrow Keys
+    window.addEventListener("keydown", e => {
+      if (!activePointMode) return;
+      
+      let targetPoint = activePointMode === 'p1' ? p1 : p2;
+      if (!targetPoint) return;
+
+      // Check if directional arrows are pressed
+      const isArrow = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key);
+      if (!isArrow) return;
+
+      e.preventDefault(); // Stop webpage scrolling layout shifts
+
+      const step = e.shiftKey ? 10 : 1; // Nudge 10px if holding Shift, otherwise 1px
+
+      if (e.key === "ArrowUp")    targetPoint.y -= step;
+      if (e.key === "ArrowDown")  targetPoint.y += step;
+      if (e.key === "ArrowLeft")  targetPoint.x -= step;
+      if (e.key === "ArrowRight") targetPoint.x += step;
+
+      // Clamp properties inside canvas edge boundaries 
+      targetPoint.x = Math.max(0, Math.min(canvas.width, targetPoint.x));
+      targetPoint.y = Math.max(0, Math.min(canvas.height, targetPoint.y));
+
+      // Mirror settings back to the glass magnifier view anchor while adjusting
+      mouseX = targetPoint.x;
+      mouseY = targetPoint.y;
+      showMagnifier = true; 
+
+      updateDisplay();
+      draw();
+    });
+
+    // Hide magnifier lens grid if user stops adjusting keyboard parameters
+    window.addEventListener("keyup", e => {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        showMagnifier = false;
+        draw();
+      }
+    });
+
+    // Apply selection
+    function applySelection(isErase) {
+      let x1 = Math.min(startX, endX);
+      let x2 = Math.max(startX, endX);
+      let y1 = Math.min(startY, endY);
+      let y2 = Math.max(startY, endY);
+
+      if (isErase) {
+        filteredPoints = filteredPoints.filter(p =>
+          !(p.x>=x1 && p.x<=x2 && p.y>=y1 && p.y<=y2)
+        );
+      } else {
+        filteredPoints = filteredPoints.filter(p =>
+          (p.x>=x1 && p.x<=x2 && p.y>=y1 && p.y<=y2)
+        );
+      }
+
+      draw();
+    }
+
+    // Modes
+    function setMode(m) {
+      mode = m;
+      activePointMode = m; // Track point as active selection profile
+      showMagnifier = true;
+      updateButtonStyles();
+    }
+
+    // Reset
+    function resetPoints() {
+      p1 = null;
+      p2 = null;
+      activePointMode = null;
+      document.getElementById("pxmin").value = "";
+      document.getElementById("pymax").value = "";
+      document.getElementById("pxmax").value = "";
+      document.getElementById("pymin").value = "";
+      updateButtonStyles();
+      updateDisplay();
+      draw();
+    }
+
+    function updateButtonStyles() {
+      const btn1 = document.getElementById("btn-p1");
+      const btn2 = document.getElementById("btn-p2");
+
+      // Reset base styles
+      btn1.className = btn1.className.replace(/bg-amber-600|border-amber-500|bg-slate-800/, "bg-slate-800");
+      btn2.className = btn2.className.replace(/bg-amber-600|border-amber-500|bg-slate-800/, "bg-slate-800");
+
+      // Apply highlighted UI skin color layout maps while tracking modifications active
+      if (activePointMode === 'p1') {
+        btn1.className = btn1.className.replace("bg-slate-800", "bg-amber-600 border-amber-500");
+      } else if (activePointMode === 'p2') {
+        btn2.className = btn2.className.replace("bg-slate-800", "bg-amber-600 border-amber-500");
+      }
+    }
+
+    // Display coordinates
+    function updateDisplay() {
+      if(p1) {
+        document.getElementById("pxmin").value = `${Math.round(p1.x)}`;
+        document.getElementById("pymax").value = `${Math.round(p1.y)}`;
+      }
+
+      if (p2) {
+        document.getElementById("pxmax").value = `${Math.round(p2.x)}`;
+        document.getElementById("pymin").value = `${Math.round(p2.y)}`;
+      }
+    }
+
+    // Convert pixel → graph
+    function pixelToGraph(px, py){
+      let xmin = parseFloat(document.getElementById("xmin").value);
+      let xmax = parseFloat(document.getElementById("xmax").value);
+      let ymin = parseFloat(document.getElementById("ymin").value);
+      let ymax = parseFloat(document.getElementById("ymax").value);
+
+      if (!p1 || !p2 || isNaN(xmin)||isNaN(xmax)||isNaN(ymin)||isNaN(ymax)){
+        return null;
+      }
+
+      let x = xmin + (px - p1.x) * (xmax - xmin) / (p2.x - p1.x);
+      let y = ymax - (py - p1.y) * (ymax - ymin) / (p2.y - p1.y);
+
+      return {x,y};
+    }
+
+    function drawFinalGraph() {
+      const plotCanvas = document.getElementById("plotCanvas");
+      const ctx = plotCanvas.getContext("2d");
+
+      ctx.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
+
+      if (!filteredPoints.length) {
+        alert("No data to plot!");
+        return;
+      }
+
+      // Convert pixel points → graph values
+      let graphPoints = [];
+      let X = [];
+
+      // let test = get_list_of_centroids_of_pixel_segments();
+      //for(let ia=0; ia<test.length; ia++){
+      //  graphPoints.push({ x: test[ia][0], y: test[ia][1] });
+      //}
+
+
+      //filteredPoints.forEach(p => {
+      //  console.log(`Point: x=${p.x}, y=${p.y}`);
+      //});
+
+
+      filteredPoints.forEach(p => {
+        let g = pixelToGraph(p.x, p.y);
+        if (g) graphPoints.push(g);
+      });
+
+      if (graphPoints.length === 0) {
+        alert("Invalid calibration mapping configurations!");
+        return;
+      }
+
+      // Sort by x for proper curve drawing
+      graphPoints.sort((a, b) => a.x - b.x);
+
+      let xmin = Math.min(...graphPoints.map(p => p.x));
+      let xmax = Math.max(...graphPoints.map(p => p.x));
+      let ymin = Math.min(...graphPoints.map(p => p.y));
+      let ymax = Math.max(...graphPoints.map(p => p.y));
+
+      const padding = 50; // Increased spacing to fit layout aesthetics cleanly
+
+      // Background Grid Coordinates Setup For Premium Look Architecture
+      ctx.strokeStyle = "#1e293b";
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 4; i++) {
+        let lx = padding + (i * (plotCanvas.width - 2 * padding) / 5);
+        let ly = padding + (i * (plotCanvas.height - 2 * padding) / 5);
+        
+        ctx.beginPath(); ctx.moveTo(lx, padding); ctx.lineTo(lx, plotCanvas.height - padding); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(padding, ly); ctx.lineTo(plotCanvas.width - padding, ly); ctx.stroke();
+      }
+
+      function scaleX(x) {
+        return padding + (x - xmin) * (plotCanvas.width - 2 * padding) / (xmax - xmin);
+      }
+
+      function scaleY(y) {
+        return plotCanvas.height - padding - (y - ymin) * (plotCanvas.height - 2 * padding) / (ymax - ymin);
+      }
+
+      // Draw axes
+      ctx.strokeStyle = "#94a3b8";
+      ctx.lineWidth = 1.5;
+
+      // X axis
+      ctx.beginPath();
+      ctx.moveTo(padding, plotCanvas.height - padding);
+      ctx.lineTo(plotCanvas.width - padding, plotCanvas.height - padding);
+      ctx.stroke();
+
+      // Y axis
+      ctx.beginPath();
+      ctx.moveTo(padding, padding);
+      ctx.lineTo(padding, plotCanvas.height - padding);
+      ctx.stroke();
+
+      // Draw curve
+      ctx.strokeStyle = "#10b981"; // Vibrant Emerald green tracking matrix plot curve
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+
+      graphPoints.forEach((p, i) => {
+        let x = scaleX(p.x);
+        let y = scaleY(p.y);
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+
+      ctx.stroke();
+
+      // Optional: draw points
+      ctx.fillStyle = "#3b82f6";
+      graphPoints.forEach(p => {
+        ctx.fillRect(scaleX(p.x) - 1.5, scaleY(p.y) - 1.5, 3, 3);
+      });
+    }
+
+    // CSV export
+    function downloadCSV(){
+      if (!filteredPoints.length){
+        alert("No data detected across current workspace profile segments.");
+        return;
+      }
+
+      if (!p1 || !p2){
+        alert("Please set axis anchor point parameters first.");
+        return;
+      }
+
+      let csv="x,y\n";
+
+      filteredPoints.forEach(p=>{
+        let g = pixelToGraph(p.x, p.y);
+        if (g){
+          csv += `${g.x.toFixed(4)},${g.y.toFixed(4)}\n`;
+        }
+      });
+
+      let blob = new Blob([csv], {type:"text/csv"});
+      let a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download="graph_real_data.csv";
+      a.click();
+    }
+
+    function getMousePos(canvas, evt) {
+      const rect = canvas.getBoundingClientRect();
+
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+
+      return {
+        x: (evt.clientX - rect.left) * scaleX,
+        y: (evt.clientY - rect.top) * scaleY
+      };
+    }
+
+
+    function drawMagnifier(x,y){
+      let r=lensSize/2;
+    
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.clip();
+
+      ctx.drawImage(canvas,
+        x-r/zoomFactor,y-r/zoomFactor,
+        r/zoomFactor*2,r/zoomFactor*2,
+        x-r,y-r,r*2,r*2
+      );
+
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x-10,y); ctx.lineTo(x+10,y);
+      ctx.moveTo(x,y-10); ctx.lineTo(x,y+10);
+      ctx.strokeStyle="red"; ctx.stroke();
+    }
+
+    function refreshVisualization() {
+      // redraw left canvas (keeps markers aligned)
+      draw();
+
+      // redraw graph if possible
+      if (p1 && p2 && filteredPoints.length) {
+        drawFinalGraph();
+      }
+    }
+
+    function get_list_of_centroids_of_pixel_segments(){
+
+      let p = [];
+
+      filteredPoints.forEach(q => {
+        let g = pixelToGraph(q.x, q.y);
+        if (g) p.push([q.x, q.y]);
+      });
+
+      let checked = new Array(p.length).fill(0);
+      return p;
+
+      // Connected Neighborhood Clustered Pixel Sweep
+      const X = [];
+    
+      while (p.length >= 1) {
+        let x = [p.shift()]; // Grab the first point vector
+        let xno = x.length;
+        
+        while (true) {
+          for (let ia = 0; ia < xno; ia++) {
+            const targetX = x[ia][0];
+            const targetY = x[ia][1];
+                
+            // Find all pixels in 'p' closer than or equal to sqrt(2) distance
+            const remaining = [];
+            for (let ib = 0; ib < p.length; ib++) {
+              const dx = p[ib][0] - targetX;
+              const dy = p[ib][1] - targetY;
+              const distSq = dx * dx + dy * dy;
+                    
+              if (distSq <= 2) { // sqrt(2)^2 = 2
+                x.push(p[ib]);
+              } else {
+                remaining.push(p[ib]);
+              }
+            }
+            p = remaining;
+          }
+            
+          if (x.length > xno) {
+            xno = x.length;
+          } else {
+            break;
+          }
+        }
+        X.push(x);
+      }
+
+      // Compute Center Centroids of Pixel Segments
+      let Q = [];
+      for (let ia = 0; ia < X.length; ia++) {
+        const cluster = X[ia];
+        const len = cluster.length;
+        let sumX = 0;
+        let sumY = 0;
+        for (let i = 0; i < len; i++) {
+            sumX += cluster[i][0];
+            sumY += cluster[i][1];
+        }
+        Q.push([sumX / len, sumY / len]);
+      }
+      return Q;
+    }
+  </script>
+
+</body>
+</html>
