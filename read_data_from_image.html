@@ -94,7 +94,10 @@
           <span>⚡</span> 3. Dataset Render
         </h3>
         <button onclick="drawFinalGraph()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white active:scale-[0.98] text-xs font-bold py-2.5 px-4 rounded-lg shadow-md transition-all duration-150 cursor-pointer">
-          Transform & Plot Curve
+          Transform & Plot Markers
+        </button>
+        <button onclick="printDataTable()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white active:scale-[0.98] text-xs font-semibold py-2 px-4 rounded-lg shadow-md transition-all duration-150 cursor-pointer">
+          🖨️ Print Data Table
         </button>
         <button onclick="downloadCSV()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 active:scale-[0.98] text-xs font-semibold py-2 px-4 rounded-lg border border-slate-700 transition-all duration-150 cursor-pointer">
           Export Structured CSV Data
@@ -457,6 +460,22 @@
       return {x,y};
     }
 
+    // Shared helper: build the final graph-space dataset from clustered centroids.
+    // Used by the plot, the printable table, and the CSV export so all three stay consistent.
+    function computeGraphData() {
+      if (!filteredPoints.length) return [];
+
+      let centroids = get_list_of_centroids_of_pixel_segments();
+      let graphPoints = [];
+
+      for (let i = 0; i < centroids.length; i++) {
+        let g = pixelToGraph(centroids[i][0], centroids[i][1]);
+        if (g) graphPoints.push(g);
+      }
+
+      return graphPoints;
+    }
+
     function drawFinalGraph() {
       const plotCanvas = document.getElementById("plotCanvas");
       const ctx = plotCanvas.getContext("2d");
@@ -468,32 +487,20 @@
         return;
       }
 
-      // Convert pixel points → graph values
-      let graphPoints = [];
-      let X = [];
+      if (!p1 || !p2) {
+        alert("Please set axis anchor point parameters first.");
+        return;
+      }
 
-      // let test = get_list_of_centroids_of_pixel_segments();
-      //for(let ia=0; ia<test.length; ia++){
-      //  graphPoints.push({ x: test[ia][0], y: test[ia][1] });
-      //}
-
-
-      //filteredPoints.forEach(p => {
-      //  console.log(`Point: x=${p.x}, y=${p.y}`);
-      //});
-
-
-      filteredPoints.forEach(p => {
-        let g = pixelToGraph(p.x, p.y);
-        if (g) graphPoints.push(g);
-      });
+      // Convert pixel centroids → graph values via shared helper
+      let graphPoints = computeGraphData();
 
       if (graphPoints.length === 0) {
         alert("Invalid calibration mapping configurations!");
         return;
       }
 
-      // Sort by x for proper curve drawing
+      // Sort by x (keeps marker ordering tidy; harmless for scatter)
       graphPoints.sort((a, b) => a.x - b.x);
 
       let xmin = Math.min(...graphPoints.map(p => p.x));
@@ -515,10 +522,12 @@
       }
 
       function scaleX(x) {
+        if (xmax === xmin) return plotCanvas.width / 2; // guard against single-column data
         return padding + (x - xmin) * (plotCanvas.width - 2 * padding) / (xmax - xmin);
       }
 
       function scaleY(y) {
+        if (ymax === ymin) return plotCanvas.height / 2; // guard against single-row data
         return plotCanvas.height - padding - (y - ymin) * (plotCanvas.height - 2 * padding) / (ymax - ymin);
       }
 
@@ -538,26 +547,117 @@
       ctx.lineTo(padding, plotCanvas.height - padding);
       ctx.stroke();
 
-      // Draw curve
-      ctx.strokeStyle = "#10b981"; // Vibrant Emerald green tracking matrix plot curve
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
+      // Axis tick numbers (6 evenly spaced labels per axis, matching the grid).
+      const ticks = 5; // 5 segments => 6 labelled positions (endpoints included)
 
-      graphPoints.forEach((p, i) => {
+      // Format a value compactly: integers stay whole, otherwise a few significant digits.
+      function fmtTick(v) {
+        if (!isFinite(v)) return "";
+        if (Math.abs(v) >= 1000 || (v !== 0 && Math.abs(v) < 0.01)) {
+          return v.toExponential(2);
+        }
+        return Number.isInteger(v) ? String(v) : parseFloat(v.toFixed(3)).toString();
+      }
+
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "10px monospace";
+
+      // X-axis labels along the bottom
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (let i = 0; i <= ticks; i++) {
+        const value = xmin + (xmax - xmin) * i / ticks;
+        const xPos = padding + (plotCanvas.width - 2 * padding) * i / ticks;
+        ctx.fillText(fmtTick(value), xPos, plotCanvas.height - padding + 6);
+      }
+
+      // Y-axis labels down the left side
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i <= ticks; i++) {
+        const value = ymin + (ymax - ymin) * i / ticks;
+        const yPos = plotCanvas.height - padding - (plotCanvas.height - 2 * padding) * i / ticks;
+        ctx.fillText(fmtTick(value), padding - 6, yPos);
+      }
+
+      // Draw markers only (no connecting line)
+      ctx.fillStyle = "#10b981"; // Vibrant Emerald green data markers
+      graphPoints.forEach(p => {
         let x = scaleX(p.x);
         let y = scaleY(p.y);
-
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        ctx.beginPath();
+        ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
       });
+    }
 
-      ctx.stroke();
+    // Open a clean, printable table of the extracted dataset in a new window.
+    function printDataTable() {
+      if (!filteredPoints.length) {
+        alert("No data detected across current workspace profile segments.");
+        return;
+      }
 
-      // Optional: draw points
-      ctx.fillStyle = "#3b82f6";
-      graphPoints.forEach(p => {
-        ctx.fillRect(scaleX(p.x) - 1.5, scaleY(p.y) - 1.5, 3, 3);
-      });
+      if (!p1 || !p2) {
+        alert("Please set axis anchor point parameters first.");
+        return;
+      }
+
+      let graphPoints = computeGraphData();
+
+      if (!graphPoints.length) {
+        alert("Invalid calibration mapping configurations!");
+        return;
+      }
+
+      graphPoints.sort((a, b) => a.x - b.x);
+
+      let rows = graphPoints.map((g, i) =>
+        `<tr><td>${i + 1}</td><td>${g.x.toFixed(4)}</td><td>${g.y.toFixed(4)}</td></tr>`
+      ).join("");
+
+      const generated = new Date().toLocaleString();
+      const count = graphPoints.length;
+
+      let win = window.open("", "_blank", "width=480,height=640");
+      if (!win) {
+        alert("Unable to open the print window. Please allow pop-ups for this page and try again.");
+        return;
+      }
+
+      win.document.write(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <title>Extracted Dataset</title>
+          <style>
+            body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 32px; color: #0f172a; }
+            h1 { font-size: 18px; margin: 0 0 4px; }
+            .meta { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+            table { border-collapse: collapse; width: 100%; font-size: 13px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 10px; text-align: right; }
+            th { background: #f1f5f9; text-align: center; font-weight: 600; }
+            td:first-child, th:first-child { text-align: center; color: #64748b; }
+            tr:nth-child(even) td { background: #f8fafc; }
+            .actions { margin-bottom: 16px; }
+            button { font-size: 13px; padding: 6px 14px; border: 1px solid #4338ca; border-radius: 6px; background: #4f46e5; color: #fff; cursor: pointer; }
+            @media print { .actions { display: none; } body { margin: 0; } }
+          </style>
+        </head>
+        <body>
+          <h1>Graph Extractor Pro &mdash; Extracted Dataset</h1>
+          <div class="meta">${count} data points &bull; generated ${generated}</div>
+          <div class="actions"><button onclick="window.print()">🖨️ Print</button></div>
+          <table>
+            <thead><tr><th>#</th><th>X</th><th>Y</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+        </html>
+      `);
+      win.document.close();
+      win.focus();
     }
 
     // CSV export
@@ -572,13 +672,12 @@
         return;
       }
 
-      let csv="x,y\n";
+      let graphPoints = computeGraphData();
+      graphPoints.sort((a, b) => a.x - b.x);
 
-      filteredPoints.forEach(p=>{
-        let g = pixelToGraph(p.x, p.y);
-        if (g){
-          csv += `${g.x.toFixed(4)},${g.y.toFixed(4)}\n`;
-        }
+      let csv="x,y\n";
+      graphPoints.forEach(g => {
+        csv += `${g.x.toFixed(4)},${g.y.toFixed(4)}\n`;
       });
 
       let blob = new Blob([csv], {type:"text/csv"});
@@ -646,11 +745,11 @@
         if (g) p.push([q.x, q.y]);
       });
 
-      let checked = new Array(p.length).fill(0);
-      return p;
+      
+      //return p;
 
       // Connected Neighborhood Clustered Pixel Sweep
-      const X = [];
+      let X = [];
     
       while (p.length >= 1) {
         let x = [p.shift()]; // Grab the first point vector
@@ -662,19 +761,17 @@
             const targetY = x[ia][1];
                 
             // Find all pixels in 'p' closer than or equal to sqrt(2) distance
-            const remaining = [];
-            for (let ib = 0; ib < p.length; ib++) {
+
+            for (let ib = (p.length - 1); ib>=0; --ib) {
               const dx = p[ib][0] - targetX;
               const dy = p[ib][1] - targetY;
               const distSq = dx * dx + dy * dy;
                     
               if (distSq <= 2) { // sqrt(2)^2 = 2
                 x.push(p[ib]);
-              } else {
-                remaining.push(p[ib]);
+                p.splice(ib, 1);
               }
             }
-            p = remaining;
           }
             
           if (x.length > xno) {
